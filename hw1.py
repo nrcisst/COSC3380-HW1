@@ -1,6 +1,5 @@
-# Import the psycopg2 (Python driver that connects to psql)
 import psycopg2
-# Import your psql credentials from the python file db_config.py
+
 from db_config import (
     DB_HOST,
     DB_PORT,
@@ -9,15 +8,37 @@ from db_config import (
     DB_PASSWORD
 )
 
-# Initialize cursor and connection objects
-# The "cursor" allows you to execute querys in psql and store its results.
-# The "connection" authenticates the imported credentials from db_config.py to establish a connection with the "cursor" to psql.
-cursor = None
+def check_normalization(conn, table_name, pk, cols):
+    """
+    Check whether a table is normalized (3NF/BCNF) under simplified rules.
+
+    Inputs:
+        conn       : psycopg2 connection object
+        table_name : str, name of the table to check
+        pk         : str, primary key column name
+        cols       : list of str, other columns in the table
+
+    Output:
+        'Y' if normalized
+        'N' if not normalized
+        If composite PK detected, return 'N' with note "case not considered".
+    
+    Rules (to implement later):
+        - For each non-PK column X, pair with each other column Y.
+        - Run:
+            SELECT COUNT(DISTINCT X) vs. SELECT COUNT(DISTINCT X, Y)
+        - If equal AND X repeats, then FD X→Y exists → violation.
+        - Append each SQL to checkdb.sql (formatted).
+    """
+    # TODO: implement SQL checks
+    return "N"  # placeholder
+
+# Guard against NameError in finally if connect fails
 connection = None
+cursor = None
 
 try:
     # Establish a connection to the PostgreSQL database
-    # Edit db_config.py to change the values that get imported
     connection = psycopg2.connect(
         host=DB_HOST,
         port=DB_PORT,
@@ -26,33 +47,18 @@ try:
         password=DB_PASSWORD
     )
     
-    # Create a new database session and return a cursor object
+    
     cursor = connection.cursor()
-    
-    # Execute an SQL query to fetch data from table T0
-    cursor.execute("SELECT * FROM T0;")
-    
-    # Fetch all rows from the cursor into a list
-    rows = cursor.fetchall()
-    
-    # Display fetched rows
-    print("Fetched rows:")
-    for row in rows:
-        col1, col2, col3 = row 
-        print(f"col1: {col1}, col2: {col2}, col3: {col3}")
 
 
-# Print any errors that occured trying to establish connection or execute a query
 except Exception as e:
     print(f"An error occurred: {e}")
 
 # After the code succesfully executes make sure to close connections
 # Connections can remain open if your program unexpectedly closes
 finally:
-    # Close the cursor to avoid memory leak
     if cursor:
         cursor.close()
     
-    # Close the connection to free up resources
     if connection:
         connection.close()
