@@ -1,9 +1,10 @@
 
 import sys
-# Import the psycopg2 (Python driver that connects to psql)
+import re
+import json
+from typing import List, Dict, Tuple
 
 import psycopg2
-
 from db_config import (
     DB_HOST,
     DB_PORT,
@@ -12,12 +13,9 @@ from db_config import (
     DB_PASSWORD
 )
 
-
-# parser.py -- Role A parser
-import re
-import json
-from typing import List, Dict, Tuple
-
+# -----------------------------
+# Role A: schema parser
+# -----------------------------
 def parse_schema_text(text: str) -> Tuple[List[Dict], List[str]]:
     """
     Parse schema text and return (tables_list, global_errors).
@@ -47,7 +45,7 @@ def parse_schema_text(text: str) -> Tuple[List[Dict], List[str]]:
                 "fks": [],
                 "composite": True,
                 "skip": True,
-                "errors": [f"can't parse table line"]
+                "errors": ["can't parse table line"]
             })
             continue
 
@@ -106,9 +104,11 @@ def parse_schema_text(text: str) -> Tuple[List[Dict], List[str]]:
                         # keep a placeholder so B/D can see it
                         fks.append({"col": col, "ref_table": None, "ref_pk": None})
                     else:
-                        fks.append({"col": col,
-                                    "ref_table": rm.group(1).lower(),
-                                    "ref_pk": rm.group(2).lower()})
+                        fks.append({
+                            "col": col,
+                            "ref_table": rm.group(1).lower(),
+                            "ref_pk": rm.group(2).lower()
+                        })
                 else:
                     errors.append(f"unknown annotation '{ann_clean}' for column {col}")
 
@@ -127,13 +127,14 @@ def parse_schema_text(text: str) -> Tuple[List[Dict], List[str]]:
             composite = True
             pk = None
 
-        # skip if obvious malformation
+        # skip only if unrecoverable malformation
         skip = False
-        if errors:
-            skip = True
-        # if pk is declared but not in cols (shouldn't happen), skip
         if pk and pk not in cols:
             errors.append("pk not found in cols")
+            skip = True
+        if pk is None:  # no valid PK (0 or >1 PKs)
+            skip = True
+        if not cols:
             skip = True
 
         tables.append({
@@ -168,61 +169,9 @@ def write_parsed_json(schema_path: str, out_path: str = None) -> str:
         json.dump(result, f, indent=2)
     return out_path
 
-
-# Example usage from other modules:
-# from parser import read_schema_file
-# tables, globals_err = read_schema_file('tc1.txt')
-
-if __name__ == '__main__':
-    # If executed directly, write the parsed JSON file (no stdout)
-    import sys
-    if len(sys.argv) < 2:
-        sys.exit(1)
-    schema_file = sys.argv[1]
-    write_parsed_json(schema_file)
-    sys.exit(0)
-
-
-
-
-# Initialize cursor and connection objects
-# The "cursor" allows you to execute querys in psql and store its results.
-# The "connection" authenticates the imported credentials from db_config.py to establish a connection with the "cursor" to psql.
-if __name__ == '__main__' and len(sys.argv) == 1:
-    # only do DB stuff if no schema file given
-    cursor = None
-    connection = None
-
-    try:
-        connection = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
-        
-        cursor = connection.cursor()
-        cursor.execute("SELECT * FROM T0;")
-        rows = cursor.fetchall()
-        print("Fetched rows:")
-        for row in rows:
-            col1, col2, col3 = row 
-            print(f"col1: {col1}, col2: {col2}, col3: {col3}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        if cursor:
-            cursor.close()
-        if connection:
-            connection.close()
-
-# parser runner
-if __name__ == '__main__' and len(sys.argv) >= 2:
-    schema_file = sys.argv[1]
-    write_parsed_json(schema_file)
-    print(f"Parsed {schema_file} into {schema_file}.parsed.json")
-
+# -----------------------------
+# Normalization checker (stub)
+# -----------------------------
 def check_normalization(conn, table_name, pk, cols):
     """
     Check whether a table is normalized (3NF/BCNF) under simplified rules.
@@ -248,33 +197,31 @@ def check_normalization(conn, table_name, pk, cols):
     # TODO: implement SQL checks
     return "N"  # placeholder
 
-# Guard against NameError in finally if connect fails
-connection = None
-cursor = None
 
-try:
-    # Establish a connection to the PostgreSQL database
-    connection = psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD
-    )
-    
-    
-    cursor = connection.cursor()
-
-
-except Exception as e:
-    print(f"An error occurred: {e}")
-
-# After the code succesfully executes make sure to close connections
-# Connections can remain open if your program unexpectedly closes
-finally:
-    if cursor:
-        cursor.close()
-    
-    if connection:
-        connection.close()
-
+# Single entrypoint
+if __name__ == '__main__':
+    if len(sys.argv) >= 2:
+        schema_file = sys.argv[1]
+        out = write_parsed_json(schema_file)
+        print(f"Parsed {schema_file} into {out}")
+    else:
+        # Optional: simple DB probe (no side effects)
+        conn = cur = None
+        try:
+            conn = psycopg2.connect(
+                host=DB_HOST,
+                port=DB_PORT,
+                database=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD
+            )
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            print("DB connection OK")
+        except Exception as e:
+            print(f"DB probe failed: {e}")
+        finally:
+            try:
+                if cur: cur.close()
+            finally:
+                if conn: conn.close()
