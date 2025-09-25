@@ -1,7 +1,9 @@
+
 import sys
 # Import the psycopg2 (Python driver that connects to psql)
+
 import psycopg2
-# Import your psql credentials from the python file db_config.py
+
 from db_config import (
     DB_HOST,
     DB_PORT,
@@ -9,6 +11,7 @@ from db_config import (
     DB_USER,
     DB_PASSWORD
 )
+
 
 # parser.py -- Role A parser
 import re
@@ -219,3 +222,59 @@ if __name__ == '__main__' and len(sys.argv) >= 2:
     schema_file = sys.argv[1]
     write_parsed_json(schema_file)
     print(f"Parsed {schema_file} into {schema_file}.parsed.json")
+
+def check_normalization(conn, table_name, pk, cols):
+    """
+    Check whether a table is normalized (3NF/BCNF) under simplified rules.
+
+    Inputs:
+        conn       : psycopg2 connection object
+        table_name : str, name of the table to check
+        pk         : str, primary key column name
+        cols       : list of str, other columns in the table
+
+    Output:
+        'Y' if normalized
+        'N' if not normalized
+        If composite PK detected, return 'N' with note "case not considered".
+    
+    Rules (to implement later):
+        - For each non-PK column X, pair with each other column Y.
+        - Run:
+            SELECT COUNT(DISTINCT X) vs. SELECT COUNT(DISTINCT X, Y)
+        - If equal AND X repeats, then FD X→Y exists → violation.
+        - Append each SQL to checkdb.sql (formatted).
+    """
+    # TODO: implement SQL checks
+    return "N"  # placeholder
+
+# Guard against NameError in finally if connect fails
+connection = None
+cursor = None
+
+try:
+    # Establish a connection to the PostgreSQL database
+    connection = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    
+    
+    cursor = connection.cursor()
+
+
+except Exception as e:
+    print(f"An error occurred: {e}")
+
+# After the code succesfully executes make sure to close connections
+# Connections can remain open if your program unexpectedly closes
+finally:
+    if cursor:
+        cursor.close()
+    
+    if connection:
+        connection.close()
+

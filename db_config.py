@@ -1,5 +1,5 @@
 DB_HOST = "localhost"
 DB_PORT = "5432"
 DB_NAME = "postgres"
-DB_USER = "binivm"
-DB_PASSWORD = "" 
+DB_USER = "dbs015"
+DB_PASSWORD = "dbs015" 
