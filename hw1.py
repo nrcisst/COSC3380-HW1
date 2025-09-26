@@ -323,6 +323,8 @@ if __name__ == '__main__':
         conn = psycopg2.connect(
             host=DB_HOST, port=DB_PORT, database=DB_NAME, user=DB_USER, password=DB_PASSWORD
         )
+        with conn.cursor() as cur:
+                cur.execute("SET search_path TO dbs015;")
 
         for t in tables:
             if t["skip"]:
@@ -356,6 +358,7 @@ if __name__ == '__main__':
                 password=DB_PASSWORD
             )
             cur = conn.cursor()
+            cur.execute("SET search_path TO dbs015;")
             cur.execute("SELECT 1")
             print("DB connection OK")
         except Exception as e:
