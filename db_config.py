@@ -1,4 +1,4 @@
-DB_HOST = "localhost"
+DB_HOST = "54.227.44.99"
 DB_PORT = "5432"
 DB_NAME = "postgres"
 DB_USER = "dbs015"

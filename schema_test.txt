@@ -1,5 +1,0 @@
--- sample test
-T1(id(pk), i(fk:T2.i), A, B)
-T2(i(pk), C, D)
-T3(x(pk), y(fk:T2.i), z)
-T4(nope(bad), a)     -- malformed token example

@@ -1,0 +1,4 @@
+T1(k1(pk),A)
+T2(k2(pk),B)
+T3(k3(pk),C)
+T4(k4(pk),k1(fk:T1.k1),k2(fk:T2.k2),k3(fk:T3.k3),D,E,F,G,H,I,J,K,L)

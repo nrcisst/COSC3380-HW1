@@ -14,34 +14,47 @@
 -- =====================================
 -- Role B: Referential Integrity
 -- =====================================
+-- >>> ROLE B AUTOLOG ANCHOR (do not remove) <<<
 
--- Check foreign key in table t1 referencing t2
-SELECT COUNT(*) 
-FROM "t1" T1 
-LEFT JOIN "t2" T2 ON T1."fk_column" = T2."pk_column";  -- Checking all rows in t1, even with no match
 
-SELECT COUNT(*) 
-FROM "t1" T1 
-JOIN "t2" T2 ON T1."fk_column" = T2."pk_column";  -- Only matching rows
+-- ----- testcase: mytest (Role B, 2025-09-26 13:37:51) -----
+SELECT COUNT(*) AS fk_violations FROM public.enrollments child LEFT JOIN public.students parent ON child.sid = parent.sid WHERE child.sid IS NOT NULL AND parent.sid IS NULL;
+SELECT COUNT(*) FROM public.enrollments;
+SELECT COUNT(*) FROM public.enrollments c JOIN public.students p ON c.sid = p.sid;
+SELECT COUNT(*) AS fk_violations FROM public.enrollments child LEFT JOIN public.courses parent ON child.cid = parent.cid WHERE child.cid IS NOT NULL AND parent.cid IS NULL;
+SELECT COUNT(*) FROM public.enrollments;
+SELECT COUNT(*) FROM public.enrollments c JOIN public.courses p ON c.cid = p.cid;
+SELECT COUNT(*) AS fk_violations FROM public.payments child LEFT JOIN public.students parent ON child.sid = parent.sid WHERE child.sid IS NOT NULL AND parent.sid IS NULL;
+SELECT COUNT(*) FROM public.payments;
+SELECT COUNT(*) FROM public.payments c JOIN public.students p ON c.sid = p.sid;
 
--- Check foreign key in table t2 referencing t3
-SELECT COUNT(*) 
-FROM "t2" T2 
-LEFT JOIN "t3" T3 ON T2."fk_column" = T3."pk_column";
 
-SELECT COUNT(*) 
-FROM "t2" T2 
-JOIN "t3" T3 ON T2."fk_column" = T3."pk_column";
-
--- Table t3 has no foreign keys, so referential integrity is valid (RI=Y)
+-- ----- testcase: mytest (Role B, 2025-09-26 13:31:57) -----
+SELECT COUNT(*) AS fk_violations FROM public.t4 child LEFT JOIN public.t1 parent ON child.k1 = parent.k1 WHERE child.k1 IS NOT NULL AND parent.k1 IS NULL;
+SELECT COUNT(*) FROM public.t4;
+SELECT COUNT(*) FROM public.t4 c JOIN public.t1 p ON c.k1 = p.k1;
+SELECT COUNT(*) AS fk_violations FROM public.t4 child LEFT JOIN public.t2 parent ON child.k2 = parent.k2 WHERE child.k2 IS NOT NULL AND parent.k2 IS NULL;
+SELECT COUNT(*) FROM public.t4;
+SELECT COUNT(*) FROM public.t4 c JOIN public.t2 p ON c.k2 = p.k2;
+SELECT COUNT(*) AS fk_violations FROM public.t4 child LEFT JOIN public.t3 parent ON child.k3 = parent.k3 WHERE child.k3 IS NOT NULL AND parent.k3 IS NULL;
+SELECT COUNT(*) FROM public.t4;
+SELECT COUNT(*) FROM public.t4 c JOIN public.t3 p ON c.k3 = p.k3;
 
 -- =====================================
 -- Role C: Normalization
 -- =====================================
--- Example:
--- SELECT COUNT(DISTINCT x) FROM t1;
--- SELECT COUNT(DISTINCT x, y) FROM t1;
--- SELECT COUNT(x), COUNT(DISTINCT x) FROM t1;
+-- >>> ROLE C AUTOLOG ANCHOR (do not remove) <<<
+-- ----- testcase: mytest (Role C, 2025-09-26 13:39:43) -----
+SELECT COUNT(*), COUNT(DISTINCT name) FROM students;
+SELECT COUNT(*), COUNT(DISTINCT level) FROM students;
+SELECT COUNT(*), COUNT(DISTINCT dept) FROM courses;
+SELECT COUNT(DISTINCT (dept,chair)), COUNT(DISTINCT dept) FROM courses;
+SELECT COUNT(*), COUNT(DISTINCT sid) FROM enrollments;
+SELECT COUNT(*), COUNT(DISTINCT cid) FROM enrollments;
+SELECT COUNT(*), COUNT(DISTINCT sid) FROM payments;
+SELECT COUNT(DISTINCT (sid,amount)), COUNT(DISTINCT sid) FROM payments;
+SELECT COUNT(*), COUNT(DISTINCT amount) FROM payments;
+
 
 
 -- =====================================
