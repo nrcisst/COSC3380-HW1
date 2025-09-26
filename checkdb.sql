@@ -14,11 +14,26 @@
 -- =====================================
 -- Role B: Referential Integrity
 -- =====================================
--- Example:
--- SELECT COUNT(*) FROM t1;
--- SELECT COUNT(*) 
--- FROM t1 JOIN t2 ON t1.fk = t2.pk;
 
+-- Check foreign key in table t1 referencing t2
+SELECT COUNT(*) 
+FROM "t1" T1 
+LEFT JOIN "t2" T2 ON T1."fk_column" = T2."pk_column";  -- Checking all rows in t1, even with no match
+
+SELECT COUNT(*) 
+FROM "t1" T1 
+JOIN "t2" T2 ON T1."fk_column" = T2."pk_column";  -- Only matching rows
+
+-- Check foreign key in table t2 referencing t3
+SELECT COUNT(*) 
+FROM "t2" T2 
+LEFT JOIN "t3" T3 ON T2."fk_column" = T3."pk_column";
+
+SELECT COUNT(*) 
+FROM "t2" T2 
+JOIN "t3" T3 ON T2."fk_column" = T3."pk_column";
+
+-- Table t3 has no foreign keys, so referential integrity is valid (RI=Y)
 
 -- =====================================
 -- Role C: Normalization
