@@ -1,10 +1,11 @@
 
 import sys
-import re
-import json
+import re, os
 from typing import List, Dict, Tuple
-
+from datetime import datetime
+from pathlib import Path
 import psycopg2
+
 from db_config import (
     DB_HOST,
     DB_PORT,
@@ -15,7 +16,7 @@ from db_config import (
 
 # -----------------------------
 # Role A: schema parser
-# -----------------------------
+
 def parse_schema_text(text: str) -> Tuple[List[Dict], List[str]]:
     """
     Parse schema text and return (tables_list, global_errors).
@@ -155,55 +156,194 @@ def read_schema_file(path: str) -> Tuple[List[Dict], List[str]]:
         txt = f.read()
     return parse_schema_text(txt)
 
+# -----------------------------
+# Role B: RI checker (autolog to Role B section)
 
-def write_parsed_json(schema_path: str, out_path: str = None) -> str:
-    """
-    Parse schema_path and write parsed JSON to out_path (defaults to schema_path + '.parsed.json').
-    Returns out_path used. This function does not print (Role D will report).
-    """
-    tables, globals_err = read_schema_file(schema_path)
-    result = {"tables": tables, "global_errors": globals_err}
-    if out_path is None:
-        out_path = schema_path + ".parsed.json"
-    with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(result, f, indent=2)
-    return out_path
+RI_SQL_FILE = "checkdb.sql"
+RI_SQL_LOG_BUFFER = []
+
+def log_ri_sql(sql: str):
+    RI_SQL_LOG_BUFFER.append(sql.strip().rstrip(";") + ";\n")
+
+def flush_ri_sql_to_checkdb(testcase_name: str):
+    if not RI_SQL_LOG_BUFFER:
+        return
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    block = (
+        f"\n-- ----- testcase: {testcase_name} (Role B, {ts}) -----\n"
+        + "".join(RI_SQL_LOG_BUFFER) + "\n"
+    )
+    p = Path(RI_SQL_FILE)
+    if not p.exists():
+        p.write_text(
+            "-- =====================================\n-- checkdb.sql\n-- =====================================\n\n"
+            "-- =====================================\n-- Role A: Parser\n-- =====================================\n\n"
+            "-- =====================================\n-- Role B: Referential Integrity\n-- =====================================\n"
+            "-- >>> ROLE B AUTOLOG ANCHOR (do not remove) <<<\n\n"
+            "-- =====================================\n-- Role C: Normalization\n-- =====================================\n"
+            "-- >>> ROLE C AUTOLOG ANCHOR (do not remove) <<<\n\n"
+            "-- =====================================\n-- Role D: Output / Orchestration\n-- =====================================\n",
+            encoding="utf-8"
+        )
+    text = p.read_text(encoding="utf-8")
+    anchor = "-- >>> ROLE B AUTOLOG ANCHOR (do not remove) <<<"
+    idx = text.find(anchor)
+    if idx == -1:
+        text = text.rstrip() + block
+    else:
+        insert_at = idx + len(anchor)
+        text = text[:insert_at] + block + text[insert_at:]
+    p.write_text(text, encoding="utf-8")
+    RI_SQL_LOG_BUFFER.clear()
+
+
+def check_referential_integrity(conn, table_name: str, fks: list) -> str:
+
+    cur = conn.cursor()
+    cur.execute("SET search_path TO public;")
+
+    all_ok = True
+    for fk in fks:
+        col = fk.get("col")
+        rt  = fk.get("ref_table")
+        rp  = fk.get("ref_pk")
+        # Skip malformed FK specs gracefully
+        if not col or not rt or not rp:
+            all_ok = False
+            continue
+
+        # 1) Violations query (preferred & clear): orphan rows where fk is NOT NULL but no matching parent
+        q_viol = (
+            f'SELECT COUNT(*) AS fk_violations '
+            f'FROM public.{table_name} child '
+            f'LEFT JOIN public.{rt} parent ON child.{col} = parent.{rp} '
+            f'WHERE child.{col} IS NOT NULL AND parent.{rp} IS NULL'
+        )
+        cur.execute(q_viol)
+        (violations,) = cur.fetchone()
+        log_ri_sql(q_viol)
+
+        # 2) (Optional) Equality check for intuition (counts equal iff 0 violations):
+        q_count_all = f"SELECT COUNT(*) FROM public.{table_name}"
+        q_count_join = (
+            f"SELECT COUNT(*) FROM public.{table_name} c "
+            f"JOIN public.{rt} p ON c.{col} = p.{rp}"
+        )
+        cur.execute(q_count_all); (cnt_all,)  = cur.fetchone(); log_ri_sql(q_count_all)
+        cur.execute(q_count_join); (cnt_join,) = cur.fetchone(); log_ri_sql(q_count_join)
+
+        # Decide pass/fail for this FK
+        if violations != 0:
+            all_ok = False
+
+    return "Y" if all_ok else "N"
 
 # -----------------------------
-# Normalization checker (stub)
-# -----------------------------
+# Normalization checker
+SQL_FILE = "checkdb.sql"
+SQL_LOG_BUFFER = []
+
+def log_norm_sql(sql: str):
+    SQL_LOG_BUFFER.append(sql.strip().rstrip(";") + ";\n")
+
+def flush_norm_sql_to_checkdb(testcase_name: str):
+    if not SQL_LOG_BUFFER:
+        return
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    block = (
+        f"\n-- ----- testcase: {testcase_name} (Role C, {ts}) -----\n"
+        + "".join(SQL_LOG_BUFFER) + "\n"
+    )
+
+    p = Path(SQL_FILE)
+    if not p.exists():
+        # minimal skeleton if file missing
+        p.write_text(
+            "-- =====================================\n-- checkdb.sql\n-- =====================================\n\n"
+            "-- =====================================\n-- Role A: Parser\n-- =====================================\n\n"
+            "-- =====================================\n-- Role B: Referential Integrity\n-- =====================================\n\n"
+            "-- =====================================\n-- Role C: Normalization\n-- =====================================\n"
+            "-- >>> ROLE C AUTOLOG ANCHOR (do not remove) <<<\n\n"
+            "-- =====================================\n-- Role D: Output / Orchestration\n-- =====================================\n",
+            encoding="utf-8"
+        )
+
+    text = p.read_text(encoding="utf-8")
+    anchor = "-- >>> ROLE C AUTOLOG ANCHOR (do not remove) <<<"
+    idx = text.find(anchor)
+    if idx == -1:
+        # if someone removed the anchor, just append at end (still safe)
+        text = text.rstrip() + block
+    else:
+        insert_at = idx + len(anchor)
+        text = text[:insert_at] + block + text[insert_at:]
+
+    p.write_text(text, encoding="utf-8")
+    SQL_LOG_BUFFER.clear()
+
+def run_and_log(cur, sql: str):
+    cur.execute(sql)
+    log_norm_sql(sql)
+    return cur.fetchone()
+
 def check_normalization(conn, table_name, pk, cols):
-    """
-    Check whether a table is normalized (3NF/BCNF) under simplified rules.
+    cur = conn.cursor()
+    ok = True
+    non_pk = [c for c in cols if c != pk]
 
-    Inputs:
-        conn       : psycopg2 connection object
-        table_name : str, name of the table to check
-        pk         : str, primary key column name
-        cols       : list of str, other columns in the table
+    for x in non_pk:
+        # does X repeat?
+        n, dx = run_and_log(cur, f"SELECT COUNT(*), COUNT(DISTINCT {x}) FROM {table_name};")
+        if dx == n:
+            continue
 
-    Output:
-        'Y' if normalized
-        'N' if not normalized
-        If composite PK detected, return 'N' with note "case not considered".
-    
-    Rules (to implement later):
-        - For each non-PK column X, pair with each other column Y.
-        - Run:
-            SELECT COUNT(DISTINCT X) vs. SELECT COUNT(DISTINCT X, Y)
-        - If equal AND X repeats, then FD X→Y exists → violation.
-        - Append each SQL to checkdb.sql (formatted).
-    """
-    # TODO: implement SQL checks
-    return "N"  # placeholder
+        # test FD X -> Y
+        for y in non_pk:
+            if y == x:
+                continue
+            dxy, dx2 = run_and_log(cur,
+                f"SELECT COUNT(DISTINCT ({x},{y})), COUNT(DISTINCT {x}) FROM {table_name};"
+            )
+            if dxy == dx2:
+                ok = False
+                break
+        if not ok:
+            break
+
+    return "Y" if ok else "N"
 
 
 # Single entrypoint
 if __name__ == '__main__':
     if len(sys.argv) >= 2:
         schema_file = sys.argv[1]
-        out = write_parsed_json(schema_file)
-        print(f"Parsed {schema_file} into {out}")
+        tables, _ = read_schema_file(schema_file)  # parse schema text
+
+        conn = psycopg2.connect(
+            host=DB_HOST, port=DB_PORT, database=DB_NAME, user=DB_USER, password=DB_PASSWORD
+        )
+
+        for t in tables:
+            if t["skip"]:
+                continue
+
+            # Role B: Referential Integrity
+            if t["fks"]:
+                ri_result = check_referential_integrity(conn, t["table"], t["fks"])
+                print(f"{t['table']}: RI={ri_result}")
+
+            # Role C: Normalization
+            norm_result = check_normalization(conn, t["table"], t["pk"], t["cols"])
+            print(f"{t['table']}: normalized={norm_result}")
+
+        # After all tables processed: flush logs into checkdb.sql
+        testcase_name = Path(schema_file).stem
+        flush_ri_sql_to_checkdb(testcase_name)
+        flush_norm_sql_to_checkdb(testcase_name)
+
+        conn.close()
+
     else:
         # Optional: simple DB probe (no side effects)
         conn = cur = None
